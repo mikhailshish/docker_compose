@@ -1,0 +1,42 @@
+name: Validate Docker Compose Project
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Create .env from example
+        run: cp .env.example .env
+
+      - name: Validate docker compose syntax
+        run: docker compose config
+
+      - name: Build and start services
+        run: docker compose up -d --build
+
+      - name: Wait for /health
+        run: |
+          for i in {1..20}; do
+            response=$(curl -s http://localhost/health || true)
+            echo "Attempt $i: $response"
+            if echo "$response" | grep -q '"status":"ok"'; then
+              exit 0
+            fi
+            sleep 5
+          done
+
+          echo "Health endpoint did not become ready in time."
+          docker compose ps
+          docker compose logs
+          exit 1
+
+      - name: Stop services
+        if: always()
+        run: docker compose down -v
